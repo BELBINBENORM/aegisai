@@ -16,7 +16,10 @@ MarkupSafe==3.0.3
 packaging==26.3
 pgvector==0.5.0
 pluggy==1.6.0
+<<<<<<< HEAD
 psycopg2-binary==2.9.12
+=======
+>>>>>>> e327163bd0025ce423b5aa213836b9a1608cb3fd
 pydantic==2.13.5
 pydantic-settings==2.15.0
 pydantic_core==2.46.5
