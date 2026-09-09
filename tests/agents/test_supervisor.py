@@ -3,6 +3,7 @@ import pytest
 from app.agents.supervisor import Supervisor
 from app.agents.multi_agent_state import MultiAgentState
 
+
 class MockAgent:
     def __init__(self, result):
         self.result = result
@@ -46,6 +47,7 @@ def test_supervisor_default_route():
     supervisor = build_supervisor()
     assert supervisor.route("tell me something") == "research"
 
+
 def test_supervisor_handoff():
     supervisor = build_supervisor()
 
@@ -62,9 +64,9 @@ def test_supervisor_handoff():
     )
 
     assert result.current_agent == "verification"
-    assert result.agent_results["rag"] == {
-        "context": "retrieved evidence"
-    }
+    assert result.agent_results["rag"] == [
+        {"context": "retrieved evidence"}
+    ]
     assert "rag" in result.completed_agents
 
 
@@ -77,9 +79,10 @@ async def test_supervisor_runs_selected_agent():
     )
 
     assert state.current_agent == "rag"
-    assert state.agent_results["rag"] == "rag result"
+    assert state.agent_results["rag"] == ["rag result"]
     assert state.completed_agents == ["rag"]
     assert state.error is None
+
 
 @pytest.mark.asyncio
 async def test_supervisor_handles_agent_failure():
@@ -99,6 +102,7 @@ async def test_supervisor_handles_agent_failure():
     assert state.error == "agent failed"
     assert state.agent_results == {}
 
+
 @pytest.mark.asyncio
 async def test_supervisor_runs_agents_in_parallel():
     supervisor = build_supervisor()
@@ -110,8 +114,8 @@ async def test_supervisor_runs_agents_in_parallel():
         }
     )
 
-    assert state.agent_results["rag"] == "rag result"
-    assert state.agent_results["research"] == "research result"
+    assert state.agent_results["rag"] == ["rag result"]
+    assert state.agent_results["research"] == ["research result"]
     assert "rag" in state.completed_agents
     assert "research" in state.completed_agents
     assert state.error is None
@@ -137,9 +141,10 @@ async def test_supervisor_parallel_preserves_success_on_failure():
         }
     )
 
-    assert state.agent_results["rag"] == "rag result"
+    assert state.agent_results["rag"] == ["rag result"]
     assert "research" not in state.agent_results
     assert state.error == "research failed"
+
 
 @pytest.mark.asyncio
 async def test_supervisor_runs_rag_to_verification_handoff():
@@ -173,10 +178,11 @@ async def test_supervisor_runs_rag_to_verification_handoff():
     )
 
     assert state.current_agent == "verification"
-    assert state.agent_results["rag"]["context"] == "retrieved evidence"
-    assert state.agent_results["verification"] == "verified result"
+    assert state.agent_results["rag"][0]["context"] == "retrieved evidence"
+    assert state.agent_results["verification"] == ["verified result"]
     assert state.completed_agents == ["rag", "verification"]
     assert state.error is None
+
 
 @pytest.mark.asyncio
 async def test_supervisor_handoff_preserves_source_on_target_failure():
@@ -201,7 +207,7 @@ async def test_supervisor_handoff_preserves_source_on_target_failure():
         to_agent="verification",
     )
 
-    assert state.agent_results["rag"] == {"context": "evidence"}
+    assert state.agent_results["rag"] == [{"context": "evidence"}]
     assert "verification" not in state.agent_results
     assert state.current_agent == "verification"
     assert state.error == "verification failed"
@@ -226,5 +232,64 @@ async def test_supervisor_uses_custom_router():
     )
 
     assert state.current_agent == "rag"
-    assert state.agent_results["rag"] == "rag result"
+    assert state.agent_results["rag"] == ["rag result"]
     assert state.error is None
+
+
+@pytest.mark.asyncio
+async def test_supervisor_uses_planner():
+    class MockPlanner:
+        async def plan(self, query):
+            class Plan:
+                tasks = ["search my documents"]
+
+            return Plan()
+
+    supervisor = Supervisor(
+        agents={
+            "rag": MockAgent("rag result"),
+        },
+        planner=MockPlanner(),
+    )
+
+    state = await supervisor.run(
+        "Find information about AegisAI"
+    )
+
+    assert state.current_agent == "rag"
+    assert state.agent_results["rag"] == ["rag result"]
+    assert state.error is None
+
+
+@pytest.mark.asyncio
+async def test_supervisor_executes_planned_tasks():
+    class MockPlanner:
+        async def plan(self, query):
+            class Plan:
+                tasks = [
+                    "search my documents",
+                    "research the latest AI news",
+                ]
+
+            return Plan()
+
+    supervisor = Supervisor(
+        agents={
+            "rag": MockAgent("rag result"),
+            "research": MockAgent("research result"),
+        },
+        planner=MockPlanner(),
+    )
+
+    state = await supervisor.run(
+        "Find information and research recent AI news"
+    )
+
+    assert state.agent_results["rag"] == ["rag result"]
+    assert state.agent_results["research"] == ["research result"]
+    assert state.completed_agents == [
+        "rag",
+        "research",
+    ]
+    assert state.error is None
+
