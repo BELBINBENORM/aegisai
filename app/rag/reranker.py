@@ -1,10 +1,16 @@
-import re
+from functools import lru_cache
+
+from sentence_transformers import CrossEncoder
 
 from app.database.models import DocumentChunk
 
 
-def _tokens(text: str) -> set[str]:
-    return set(re.findall(r"\b\w+\b", text.lower()))
+MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+
+@lru_cache(maxsize=1)
+def get_reranker() -> CrossEncoder:
+    return CrossEncoder(MODEL_NAME)
 
 
 def rerank_chunks(
@@ -12,21 +18,25 @@ def rerank_chunks(
     chunks: list[DocumentChunk],
     top_k: int = 5,
 ) -> list[DocumentChunk]:
-    query_tokens = _tokens(query)
+    if not chunks:
+        return []
 
-    def score(chunk: DocumentChunk) -> float:
-        content = chunk.content.lower()
-        content_tokens = _tokens(content)
+    model = get_reranker()
 
-        if not query_tokens:
-            return 0.0
+    pairs = [
+        (query, chunk.content)
+        for chunk in chunks
+    ]
 
-        overlap = len(query_tokens & content_tokens) / len(query_tokens)
+    scores = model.predict(pairs)
 
-        phrase_bonus = 1.0 if query.lower() in content else 0.0
+    ranked = sorted(
+        zip(chunks, scores),
+        key=lambda item: float(item[1]),
+        reverse=True,
+    )
 
-        return overlap + phrase_bonus
-
-    ranked = sorted(chunks, key=score, reverse=True)
-
-    return ranked[:top_k]
+    return [
+        chunk
+        for chunk, _ in ranked[:top_k]
+    ]
