@@ -6,23 +6,42 @@ from app.rag.hybrid_search import hybrid_search
 
 
 @pytest.mark.asyncio
-async def test_hybrid_search():
+async def test_hybrid_search_respects_metadata_filter():
     async with AsyncSessionLocal() as session:
+
+        
         await ingest_document(
             session=session,
-            filename="hybrid_test.txt",
-            content=(
-                "AegisAI uses multi-agent orchestration and advanced RAG. "
-                * 50
-            ),
+            filename="allowed.txt",
+            content="AegisAI advanced RAG allowed document.",
             content_type="text/plain",
+            document_metadata={"category": "allowed"},
+        )
+
+        await ingest_document(
+            session=session,
+            filename="blocked.txt",
+            content="AegisAI advanced RAG blocked document.",
+            content_type="text/plain",
+            document_metadata={"category": "blocked"},
         )
 
         results = await hybrid_search(
             session=session,
             query="advanced RAG",
-            top_k=3,
+            top_k=10,
+            metadata_filter={"category": "allowed"},
         )
 
         assert len(results) > 0
-        assert any("advanced RAG" in chunk.content for chunk in results)
+
+        allowed_document = await ingest_document(
+            session=session,
+            filename="allowed.txt",
+            content="AegisAI advanced RAG allowed document.",
+            content_type="text/plain",
+            document_metadata={"category": "allowed"},
+        )
+
+        for chunk in results:
+            assert chunk.document_id == allowed_document.id
