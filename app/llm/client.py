@@ -1,15 +1,18 @@
 import asyncio
+from abc import ABC, abstractmethod
+
 
 from google import genai
 from google.genai import errors
 
 from app.config.settings import settings
-from abc import ABC, abstractmethod
+
 
 class BaseLLMClient(ABC):
     @abstractmethod
     async def generate(self, prompt: str, model: str | None = None) -> str:
         pass
+
 
 class LLMClient(BaseLLMClient):
     def __init__(self) -> None:
