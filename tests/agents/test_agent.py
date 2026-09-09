@@ -21,9 +21,14 @@ class EchoTool(Tool):
         return kwargs["message"]
 
 
+class MockResponse:
+    function_calls = None
+    text = "hello from Gemini"
+
+
 class MockToolRunner(ToolRunner):
-    async def run(self, prompt, tools):
-        return "hello from agent"
+    async def generate_response(self, contents, tools):
+        return MockResponse()
 
 
 @pytest.mark.asyncio
@@ -38,32 +43,56 @@ async def test_agent_run():
         tools=[EchoTool()],
     )
 
-    assert state.final_answer == "hello from agent"
+    assert state.final_answer == "hello from Gemini"
     assert state.error is None
     assert state.step_count == 1
 
 
 @pytest.mark.asyncio
 async def test_agent_handles_tool_error():
-    class FailingToolRunner(ToolRunner):
-        async def run(self, prompt, tools):
+    class FailingTool(Tool):
+        name = "failing"
+        description = "Fails."
+        parameters = {
+            "type": "object",
+            "properties": {},
+        }
+
+        async def execute(self, **kwargs):
             raise RuntimeError("tool failed")
+
+    class ToolCall:
+        name = "failing"
+        args = {}
+
+    class ToolResponse:
+        function_calls = [ToolCall()]
+        text = None
+
+    class FailingToolRunner(ToolRunner):
+        async def generate_response(self, contents, tools):
+            return ToolResponse()
 
     agent = Agent(tool_runner=FailingToolRunner())
 
     state = await agent.run(
         query="test",
-        tools=[EchoTool()],
+        tools=[FailingTool()],
     )
 
     assert state.final_answer is None
     assert state.error == "tool failed"
 
+
 @pytest.mark.asyncio
 async def test_agent_respects_step_limit():
+    class NoResponse:
+        function_calls = None
+        text = None
+
     class NoResultToolRunner(ToolRunner):
-        async def run(self, prompt, tools):
-            return None
+        async def generate_response(self, contents, tools):
+            return NoResponse()
 
     agent = Agent(
         tool_runner=NoResultToolRunner(),
@@ -78,3 +107,112 @@ async def test_agent_respects_step_limit():
     assert state.step_count == 3
     assert state.final_answer is None
     assert state.error == "Agent reached the maximum step limit."
+
+
+@pytest.mark.asyncio
+async def test_agent_tool_call_loop():
+    class ToolCall:
+        name = "echo"
+        args = {"message": "hello"}
+
+    class ToolResponse:
+        function_calls = [ToolCall()]
+        text = None
+
+    class FinalResponse:
+        function_calls = None
+        text = "The tool returned: hello"
+
+    class LoopToolRunner(ToolRunner):
+        def __init__(self):
+            self.calls = 0
+
+        async def generate_response(self, contents, tools):
+            self.calls += 1
+
+            if self.calls == 1:
+                return ToolResponse()
+
+            assert contents[-1]["role"] == "tool"
+            assert contents[-1]["content"] == "hello"
+
+            return FinalResponse()
+
+    agent = Agent(
+        tool_runner=LoopToolRunner(),
+        max_steps=3,
+    )
+
+    state = await agent.run(
+        query="Echo hello",
+        tools=[EchoTool()],
+    )
+
+    assert state.final_answer == "The tool returned: hello"
+    assert state.error is None
+    assert state.step_count == 2
+    assert len(state.tool_calls) == 1
+    assert state.tool_calls[0]["name"] == "echo"
+
+
+@pytest.mark.asyncio
+async def test_agent_handles_unknown_tool():
+    class ToolCall:
+        name = "unknown_tool"
+        args = {}
+
+    class ToolResponse:
+        function_calls = [ToolCall()]
+        text = None
+
+    class UnknownToolRunner(ToolRunner):
+        async def generate_response(self, contents, tools):
+            return ToolResponse()
+
+    agent = Agent(tool_runner=UnknownToolRunner())
+
+    state = await agent.run(
+        query="Use the unknown tool",
+        tools=[EchoTool()],
+    )
+
+    assert state.final_answer is None
+    assert state.error == "Unknown tool requested: unknown_tool"
+
+
+@pytest.mark.asyncio
+async def test_agent_records_tool_arguments():
+    class ToolCall:
+        name = "echo"
+        args = {"message": "record me"}
+
+    class ToolResponse:
+        function_calls = [ToolCall()]
+        text = None
+
+    class FinalResponse:
+        function_calls = None
+        text = "done"
+
+    class RecordingToolRunner(ToolRunner):
+        def __init__(self):
+            self.calls = 0
+
+        async def generate_response(self, contents, tools):
+            self.calls += 1
+            return ToolResponse() if self.calls == 1 else FinalResponse()
+
+    agent = Agent(tool_runner=RecordingToolRunner())
+
+    state = await agent.run(
+        query="record this",
+        tools=[EchoTool()],
+    )
+
+    assert state.final_answer == "done"
+    assert state.tool_calls == [
+        {
+            "name": "echo",
+            "arguments": {"message": "record me"},
+        }
+    ]

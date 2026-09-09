@@ -1,3 +1,5 @@
+from unittest import result
+
 import pytest
 
 from app.agents.tool import Tool
@@ -27,27 +29,33 @@ class MockFunctionCall:
 
 
 @pytest.mark.asyncio
-async def test_tool_runner(monkeypatch):
-    async def mock_generate_function_call(
+async def test_tool_runner_generate_response(monkeypatch):
+    class MockResponse:
+        text = "final answer"
+        function_calls = None
+
+    async def mock_generate_response(
         self,
-        prompt,
+        contents,
         function_declarations,
         model="gemini-3.6-flash",
     ):
-        return MockFunctionCall()
+        assert contents == [{"role": "user", "content": "hello"}]
+        assert function_declarations[0]["name"] == "echo"
+        return MockResponse()
 
     monkeypatch.setattr(
         FunctionCallingClient,
-        "generate_function_call",
-        mock_generate_function_call,
+        "generate_response",
+        mock_generate_response,
     )
 
     runner = ToolRunner()
-    tool = EchoTool()
 
-    result = await runner.run(
-        prompt="Echo hello",
-        tools=[tool],
+    response = await runner.generate_response(
+        contents=[{"role": "user", "content": "hello"}],
+        tools=[EchoTool()],
     )
 
-    assert result == "hello"
+    assert response.text == "final answer"
+    assert response.function_calls is None

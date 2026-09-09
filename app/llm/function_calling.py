@@ -42,4 +42,25 @@ class FunctionCallingClient:
 
         return function_calls[0]
 
-        
+    async def generate_response(
+        self,
+        contents: list[Any],
+        function_declarations: list[dict[str, Any]],
+        model: str = "gemini-3.6-flash",
+    ):
+        tool = types.Tool(
+            function_declarations=function_declarations
+        )
+
+        config = types.GenerateContentConfig(
+            tools=[tool],
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                disable=True
+            ),
+        )
+
+        return await self.client.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )

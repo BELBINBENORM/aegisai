@@ -32,8 +32,28 @@ class ToolRunner:
         for tool in tools:
             if tool.name == function_call.name:
                 arguments = function_call.args or {}
-                return await tool.execute(**arguments)
+
+                return {
+                    "tool_name": tool.name,
+                    "arguments": arguments,
+                    "result": await tool.execute(**arguments),
+                }
 
         raise ValueError(
             f"Unknown tool requested: {function_call.name}"
+        )
+
+    async def generate_response(
+        self,
+        contents: list[Any],
+        tools: list[Tool],
+    ) -> Any:
+        declarations = [
+            tool.function_declaration
+            for tool in tools
+        ]
+
+        return await self.client.generate_response(
+            contents=contents,
+            function_declarations=declarations,
         )
