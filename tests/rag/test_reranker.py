@@ -1,5 +1,5 @@
 from app.database.models import DocumentChunk
-from app.rag.reranking import rerank_chunks
+from app.rag.reranker import rerank_chunks
 
 
 def test_rerank_chunks():

@@ -1,5 +1,5 @@
 from app.database.models import DocumentChunk
-from app.rag.context import compress_context
+from app.rag.compression import compress_context
 
 
 def test_compress_context():
