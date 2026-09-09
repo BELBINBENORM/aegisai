@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     
     database_url: str
 
+    gemini_api_key: str
+
 
 
 

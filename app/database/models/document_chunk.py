@@ -12,8 +12,7 @@ class DocumentChunk(Base):
     document_id: Mapped[int] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE")
     )
-    content: Mapped[str] = mapped_column(Text)
-
+    
     content: Mapped[str] = mapped_column(Text)
 
     embedding: Mapped[list[float] | None] = mapped_column(
