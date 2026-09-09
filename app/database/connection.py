@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from sqlalchemy.pool import NullPool
 from app.config.settings import settings
 
 
@@ -11,6 +12,7 @@ engine = create_async_engine(
     settings.async_database_url,
     connect_args={"ssl": True},
     echo=True,
+    poolclass=NullPool,
 )
 
 AsyncSessionLocal = async_sessionmaker(

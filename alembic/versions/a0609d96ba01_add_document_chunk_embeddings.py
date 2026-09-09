@@ -6,6 +6,7 @@ Create Date: 2026-09-09 06:53:22.667957
 
 """
 from typing import Sequence, Union
+from pgvector.sqlalchemy import Vector
 
 from alembic import op
 import sqlalchemy as sa
@@ -23,7 +24,7 @@ def upgrade() -> None:
         "document_chunks",
         sa.Column(
             "embedding",
-            sa.VECTOR(768),
+            Vector(768),
             nullable=True,
         ),
     )
