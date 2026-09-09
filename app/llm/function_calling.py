@@ -15,11 +15,11 @@ class FunctionCallingClient:
     async def generate_function_call(
         self,
         prompt: str,
-        function_declaration: dict[str, Any],
+        function_declarations: list[dict[str, Any]],
         model: str = "gemini-3.6-flash",
     ):
         tool = types.Tool(
-            function_declarations=[function_declaration]
+            function_declarations=function_declarations
         )
 
         config = types.GenerateContentConfig(
@@ -41,3 +41,5 @@ class FunctionCallingClient:
             return None
 
         return function_calls[0]
+
+        

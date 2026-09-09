@@ -42,7 +42,7 @@ async def test_function_calling(monkeypatch):
 
     function_call = await client.generate_function_call(
         prompt="What is the weather in Chennai?",
-        function_declaration=weather_function,
+        function_declarations=[weather_function],
     )
 
     assert function_call is not None
