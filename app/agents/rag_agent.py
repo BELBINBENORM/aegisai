@@ -16,10 +16,18 @@ class RAGAgent:
         query: str,
         top_k: int = 5,
         metadata_filter: dict | None = None,
-    ):
-        return await self.pipeline.retrieve(
+    ) -> dict:
+        result = await self.pipeline.retrieve(
             session=session,
             query=query,
             top_k=top_k,
             metadata_filter=metadata_filter,
         )
+
+        return {
+            "query": result["query"],
+            "rewritten_query": result["rewritten_query"],
+            "context": result["context"],
+            "citations": result["citations"],
+            "chunks": result["chunks"],
+        }
