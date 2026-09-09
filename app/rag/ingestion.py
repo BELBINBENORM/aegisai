@@ -9,10 +9,12 @@ async def ingest_document(
         filename: str,
         content: str,
         content_type: str | None = None,
-        ) -> Document:
+        document_metadata: dict | None = None) -> Document:
+    
     document = Document(
         filename=filename,
         content_type=content_type,
+        document_metadata=document_metadata,
     )
     session.add(document)
     await session.flush()

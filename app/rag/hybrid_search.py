@@ -10,12 +10,14 @@ async def hybrid_search(
     session: AsyncSession,
     query: str,
     top_k: int = 5,
+    metadata_filters: dict | None = None
 ) -> list[DocumentChunk]:
     # Vector search
     vector_chunks = await retrieve_chunks(
         session=session,
         query=query,
         top_k=top_k,
+        metadata_filter=metadata_filters,
     )
 
     # PostgreSQL full-text search
