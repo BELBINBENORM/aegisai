@@ -1,0 +1,14 @@
+[
+  {
+    "id": "q1",
+    "expected": "Python is a programming language."
+  },
+  {
+    "id": "q2",
+    "expected": "RAG combines retrieval with generation to answer using external context."
+  },
+  {
+    "id": "q3",
+    "expected": "An AI agent can reason, use tools, and perform tasks."
+  }
+]

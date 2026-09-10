@@ -1,0 +1,14 @@
+[
+  {
+    "id": "q1",
+    "question": "What is Python?"
+  },
+  {
+    "id": "q2",
+    "question": "What is retrieval augmented generation?"
+  },
+  {
+    "id": "q3",
+    "question": "What is an AI agent?"
+  }
+]
