@@ -88,3 +88,25 @@ def test_log_error(caplog):
 
     assert "request_id=req-123" in caplog.text
     assert "test error" in caplog.text
+
+def test_agent_logs_tool_trace(caplog):
+    from app.agents.agent import Agent
+
+    with caplog.at_level(logging.INFO, logger="aegisai"):
+        log_agent("Agent", "req-456")
+        log_tool("search", "req-456")
+
+    assert "request_id=req-456" in caplog.text
+    assert "agent=Agent" in caplog.text
+    assert "tool=search" in caplog.text
+
+
+def test_log_retrieval(caplog):
+    from app.observability.retrieval import log_retrieval
+
+    with caplog.at_level(logging.INFO, logger="aegisai"):
+        log_retrieval("req-789", "What is RAG?", 5)
+
+    assert "request_id=req-789" in caplog.text
+    assert "retrieval_query=What is RAG?" in caplog.text
+    assert "result_count=5" in caplog.text

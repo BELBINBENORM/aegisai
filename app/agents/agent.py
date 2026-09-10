@@ -2,6 +2,7 @@ from app.agents.state import AgentState
 from app.agents.tool import Tool
 from app.agents.tool_runner import ToolRunner
 from app.memory.manager import MemoryManager
+from app.observability.tracing import log_agent, log_tool
 
 
 class Agent:
@@ -20,11 +21,14 @@ class Agent:
         query: str,
         tools: list[Tool],
         user_id: str | None = None,
+        request_id: str = "unknown",
     ) -> AgentState:
         state = AgentState(
             query=query,
             max_steps=self.max_steps,
         )
+
+        log_agent(self.__class__.__name__, request_id)
 
         state.add_message("user", query)
 
@@ -69,6 +73,8 @@ class Agent:
                         )
 
                     arguments = function_call.args or {}
+
+                    log_tool(tool.name, request_id)
 
                     result = await tool.execute(**arguments)
 

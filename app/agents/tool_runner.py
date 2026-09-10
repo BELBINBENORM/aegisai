@@ -2,7 +2,7 @@ from typing import Any
 
 from app.agents.tool import Tool
 from app.llm.function_calling import FunctionCallingClient
-
+from app.observability.tracing import log_tool
 
 class ToolRunner:
     def __init__(
@@ -15,6 +15,7 @@ class ToolRunner:
         self,
         prompt: str,
         tools: list[Tool],
+        request_id: str = "unknown",
     ) -> Any:
         declarations = [
             tool.function_declaration
@@ -32,6 +33,8 @@ class ToolRunner:
         for tool in tools:
             if tool.name == function_call.name:
                 arguments = function_call.args or {}
+
+                log_tool(tool.name, request_id)
 
                 return {
                     "tool_name": tool.name,
