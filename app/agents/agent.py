@@ -1,6 +1,7 @@
 from app.agents.state import AgentState
 from app.agents.tool import Tool
 from app.agents.tool_runner import ToolRunner
+from app.memory.manager import MemoryManager
 
 
 class Agent:
@@ -8,14 +9,17 @@ class Agent:
         self,
         tool_runner: ToolRunner | None = None,
         max_steps: int = 5,
+        memory_manager: MemoryManager | None = None,
     ) -> None:
         self.tool_runner = tool_runner or ToolRunner()
         self.max_steps = max_steps
+        self.memory_manager = memory_manager
 
     async def run(
         self,
         query: str,
         tools: list[Tool],
+        user_id: str | None = None,
     ) -> AgentState:
         state = AgentState(
             query=query,
@@ -25,6 +29,20 @@ class Agent:
         state.add_message("user", query)
 
         try:
+            if self.memory_manager and user_id:
+                memories = await self.memory_manager.search(
+                    user_id=user_id,
+                    query=query,
+                )
+
+                for memory in memories:
+                    state.memory_context.add(memory)
+
+                    state.add_message(
+                        "memory",
+                        memory.content,
+                    )
+
             while state.can_continue():
                 state.increment_step()
 

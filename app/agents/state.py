@@ -1,12 +1,16 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.memory.context import MemoryContext
+
 
 @dataclass
 class AgentState:
     query: str
     messages: list[dict[str, Any]] = field(default_factory=list)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
+
+    memory_context: MemoryContext = field(default_factory=MemoryContext)
 
     step_count: int = 0
     max_steps: int = 5

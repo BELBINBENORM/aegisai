@@ -1,5 +1,7 @@
+from datetime import datetime
 from app.agents.state import AgentState
-
+from app.memory.context import MemoryContext
+from app.memory.models import Memory
 
 def test_agent_state():
     state = AgentState(query="What is AegisAI?")
@@ -30,3 +32,22 @@ def test_agent_step_limit():
 
     state.increment_step()
     assert not state.can_continue()
+
+def test_agent_state_has_memory_context(): 
+    state = AgentState(query="What is Python?") 
+
+    assert isinstance(state.memory_context, MemoryContext) 
+    assert state.memory_context.memories == [] 
+
+def test_agent_state_can_add_memory(): 
+    state = AgentState(query="What is Python?") 
+    state.memory_context.add( 
+        Memory(
+            id="memory-1", 
+            user_id="user-1", 
+            content="User likes Python.", 
+            metadata={}, 
+            created_at=datetime.now(), 
+        ) 
+    ) 
+    assert state.memory_context.contents() == ["User likes Python."] 
