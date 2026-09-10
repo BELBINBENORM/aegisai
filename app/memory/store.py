@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List
 
 from app.memory.models import Memory
-
+from datetime import datetime
 
 class MemoryStore(ABC):
     @abstractmethod
@@ -20,3 +20,7 @@ class MemoryStore(ABC):
     @abstractmethod
     async def search(self, user_id: str, query: str) -> List[Memory]:
         raise NotImplementedError
+
+    @abstractmethod
+    async def delete_older_than(self, user_id: str, before: datetime) -> None:
+        pass

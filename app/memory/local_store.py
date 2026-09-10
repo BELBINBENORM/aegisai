@@ -2,7 +2,7 @@ from typing import List
 
 from app.memory.models import Memory
 from app.memory.store import MemoryStore
-
+from datetime import datetime
 
 class LocalMemoryStore(MemoryStore):
     def __init__(self) -> None:
@@ -30,3 +30,17 @@ class LocalMemoryStore(MemoryStore):
             if memory.user_id == user_id
             and query in memory.content.lower()
         ]
+
+    async def delete_older_than(
+        self,
+        user_id: str,
+        before: datetime,
+    ) -> None:
+        self._memories = {
+            memory_id: memory
+            for memory_id, memory in self._memories.items()
+            if not (
+                memory.user_id == user_id
+                and memory.created_at < before
+            )
+        }

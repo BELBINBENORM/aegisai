@@ -1,49 +1,40 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.memory.context import MemoryContext
 from app.memory.models import Memory
 
 
-def test_memory_context_adds_memory():
-    context = MemoryContext()
-
-    memory = Memory(
-        id="memory-1",
-        user_id="user-1",
-        content="User prefers concise answers.",
+def make_memory(number: int) -> Memory:
+    return Memory(
+        id=f"memory-{number}",
+        user_id="1",
+        content=f"Memory {number}",
         metadata={},
-        created_at=datetime.now(),
+        created_at=datetime.now(timezone.utc),
     )
 
-    context.add(memory)
 
-    assert context.memories == [memory]
+def test_memory_context_keeps_recent_memories():
+    context = MemoryContext(max_memories=3)
+
+    for number in range(1, 6):
+        context.add(make_memory(number))
+
+    assert len(context.memories) == 3
+    assert context.contents() == [
+        "Memory 3",
+        "Memory 4",
+        "Memory 5",
+    ]
 
 
-def test_memory_context_returns_contents():
+def test_memory_context_can_be_cleared():
     context = MemoryContext()
 
-    context.add(
-        Memory(
-            id="memory-1",
-            user_id="user-1",
-            content="User likes Python.",
-            metadata={},
-            created_at=datetime.now(),
-        )
-    )
+    context.add(make_memory(1))
+    context.add(make_memory(2))
 
-    context.add(
-        Memory(
-            id="memory-2",
-            user_id="user-1",
-            content="User prefers concise answers.",
-            metadata={},
-            created_at=datetime.now(),
-        )
-    )
+    context.clear()
 
-    assert context.contents() == [
-        "User likes Python.",
-        "User prefers concise answers.",
-    ]
+    assert context.memories == []
+    assert context.contents() == []

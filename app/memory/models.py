@@ -10,3 +10,4 @@ class Memory:
     content: str
     metadata: dict[str, Any]
     created_at: datetime
+    embedding: list[float] | None = None

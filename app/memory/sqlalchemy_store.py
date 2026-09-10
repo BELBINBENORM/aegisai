@@ -1,13 +1,13 @@
 import json
 from typing import List
-
+from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.database.models.memory import Memory as MemoryModel
 from app.memory.models import Memory
 from app.memory.store import MemoryStore
-
+from app.rag.embeddings import generate_embedding
 
 class SQLAlchemyMemoryStore(MemoryStore):
     def __init__(
@@ -18,10 +18,16 @@ class SQLAlchemyMemoryStore(MemoryStore):
 
     async def save(self, memory: Memory) -> None:
         async with self.session_factory() as session:
+            embedding = memory.embedding
+
+            if embedding is None:
+                embedding = await generate_embedding(memory.content)
+
             model = MemoryModel(
                 id=memory.id,
                 user_id=int(memory.user_id),
                 content=memory.content,
+                embedding=embedding,
                 metadata_json=json.dumps(memory.metadata),
                 created_at=memory.created_at,
             )
@@ -60,15 +66,23 @@ class SQLAlchemyMemoryStore(MemoryStore):
         self,
         user_id: str,
         query: str,
+        limit: int = 5,
     ) -> List[Memory]:
         async with self.session_factory() as session:
+            query_embedding = await generate_embedding(query)
+
+            distance = MemoryModel.embedding.cosine_distance(
+                query_embedding
+            )
+
             result = await session.execute(
                 select(MemoryModel)
                 .where(
                     MemoryModel.user_id == int(user_id),
-                    MemoryModel.content.ilike(f"%{query}%"),
+                    MemoryModel.embedding.is_not(None),
                 )
-                .order_by(MemoryModel.created_at)
+                .order_by(distance)
+                .limit(limit)
             )
 
             return [
@@ -76,6 +90,7 @@ class SQLAlchemyMemoryStore(MemoryStore):
                 for model in result.scalars().all()
             ]
 
+    
     @staticmethod
     def _to_domain(model: MemoryModel) -> Memory:
         return Memory(
@@ -84,4 +99,25 @@ class SQLAlchemyMemoryStore(MemoryStore):
             content=model.content,
             metadata=json.loads(model.metadata_json),
             created_at=model.created_at,
+            embedding=list(model.embedding) if model.embedding else None,
         )
+
+    async def delete_older_than(
+        self,
+        user_id: str,
+        before: datetime,
+    ) -> None:
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(MemoryModel).where(
+                    MemoryModel.user_id == int(user_id),
+                    MemoryModel.created_at < before,
+                )
+            )
+
+            memories = result.scalars().all()
+
+            for memory in memories:
+                await session.delete(memory)
+
+            await session.commit()
