@@ -6,6 +6,7 @@ from app.rag.multi_query import MultiQueryGenerator
 from app.rag.query_rewriter import QueryRewriter
 from app.rag.reranker import rerank_chunks
 from app.rag.hybrid_search import hybrid_search
+from app.observability.retrieval import log_retrieval
 
 
 class RAGPipeline:
@@ -25,6 +26,7 @@ class RAGPipeline:
         query: str,
         top_k: int = 5,
         metadata_filter: dict | None = None,
+        request_id: str = "unknown",
     ):
         rewritten_query = await self.query_rewriter.rewrite(query)
 
@@ -58,6 +60,12 @@ class RAGPipeline:
             top_k=top_k,
         )
 
+        log_retrieval(
+            request_id=request_id,
+            query=query,
+            result_count=len(ranked_chunks),
+        )
+        
         context = compress_context(ranked_chunks)
 
         citations = build_citations(ranked_chunks)
