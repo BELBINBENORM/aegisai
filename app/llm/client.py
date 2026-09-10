@@ -41,3 +41,17 @@ class LLMClient(BaseLLMClient):
                 await asyncio.sleep(2 ** attempt)
 
         raise RuntimeError("LLM generation failed")
+
+    async def generate_stream(
+        self,
+        prompt: str,
+        model: str = "gemini-3.6-flash",
+    ):
+        response = await self.client.aio.models.generate_content_stream(
+            model=model,
+            contents=prompt,
+        )
+
+        async for chunk in response:
+            if chunk.text:
+                yield chunk.text

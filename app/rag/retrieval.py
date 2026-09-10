@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Document, DocumentChunk
 from app.rag.embeddings import generate_embedding
+from app.rag.embedding_cache import get_embedding
 
 
 async def retrieve_chunks(
@@ -11,8 +12,8 @@ async def retrieve_chunks(
     top_k: int = 5,
     metadata_filter: dict | None = None,
 ) -> list[DocumentChunk]:
-    query_embedding = await generate_embedding(query)
-
+    query_embedding = await get_embedding(query)
+    
     statement = (
         select(DocumentChunk)
         .join(Document, Document.id == DocumentChunk.document_id)

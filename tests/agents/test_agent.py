@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import AsyncMock, patch
 
 from app.agents.agent import Agent
 from app.agents.tool import Tool
@@ -216,3 +217,56 @@ async def test_agent_records_tool_arguments():
             "arguments": {"message": "record me"},
         }
     ]
+
+@pytest.mark.asyncio
+async def test_agent_returns_cached_response():
+    agent = Agent(
+        memory_manager=None,
+    )
+
+    with patch(
+        "app.agents.agent.get_cached",
+        new=AsyncMock(return_value="cached answer"),
+    ) as get_cached_mock, patch(
+        "app.agents.agent.set_cached",
+        new=AsyncMock(),
+    ) as set_cached_mock:
+
+        state = await agent.run(
+            query="hello",
+            tools=[],
+            user_id="user-1",
+        )
+
+    assert state.final_answer == "cached answer"
+    get_cached_mock.assert_awaited_once()
+    set_cached_mock.assert_not_awaited()
+
+@pytest.mark.asyncio
+async def test_agent_generates_and_caches_response():
+    agent = Agent(memory_manager=None)
+
+    response = AsyncMock()
+    response.function_calls = []
+    response.text = "new answer"
+
+    agent.tool_runner.generate_response = AsyncMock(
+        return_value=response
+    )
+
+    with patch(
+        "app.agents.agent.get_cached",
+        new=AsyncMock(return_value=None),
+    ), patch(
+        "app.agents.agent.set_cached",
+        new=AsyncMock(),
+    ) as set_cached_mock:
+
+        state = await agent.run(
+            query="hello",
+            tools=[],
+            user_id="user-1",
+        )
+
+    assert state.final_answer == "new answer"
+    set_cached_mock.assert_awaited_once()

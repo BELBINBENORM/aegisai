@@ -17,10 +17,7 @@ class ToolRunner:
         tools: list[Tool],
         request_id: str = "unknown",
     ) -> Any:
-        declarations = [
-            tool.function_declaration
-            for tool in tools
-        ]
+        declarations = self._get_declarations(tools)
 
         function_call = await self.client.generate_function_call(
             prompt=prompt,
@@ -51,12 +48,11 @@ class ToolRunner:
         contents: list[Any],
         tools: list[Tool],
     ) -> Any:
-        declarations = [
-            tool.function_declaration
-            for tool in tools
-        ]
-
+        declarations = self._get_declarations(tools)
         return await self.client.generate_response(
             contents=contents,
             function_declarations=declarations,
         )
+
+    def _get_declarations(self, tools: list[Tool]) -> list:
+        return [tool.function_declaration for tool in tools]
