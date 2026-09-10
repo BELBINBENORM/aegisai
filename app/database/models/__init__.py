@@ -3,6 +3,7 @@ from app.database.models.document_chunk import DocumentChunk
 from app.database.models.message import Message
 from app.database.models.session import Session
 from app.database.models.user import User
+from app.database.models.memory import Memory
 
 __all__ = [
     "User",
@@ -10,4 +11,5 @@ __all__ = [
     "Message",
     "Document",
     "DocumentChunk",
+    "Memory",
 ]
