@@ -1,15 +1,19 @@
 from typing import Any
 
+from app.agents.approval import ApprovalManager
 from app.agents.tool import Tool
 from app.llm.function_calling import FunctionCallingClient
 from app.observability.tracing import log_tool
+
 
 class ToolRunner:
     def __init__(
         self,
         function_calling_client: FunctionCallingClient | None = None,
+        approval_manager: ApprovalManager | None = None,
     ) -> None:
         self.client = function_calling_client or FunctionCallingClient()
+        self.approval_manager = approval_manager or ApprovalManager()
 
     async def run(
         self,
@@ -30,6 +34,18 @@ class ToolRunner:
         for tool in tools:
             if tool.name == function_call.name:
                 arguments = function_call.args or {}
+
+                approval = self.approval_manager.request(
+                    f"execute tool: {tool.name}"
+                )
+
+                if not self.approval_manager.can_execute(approval):
+                    return {
+                        "tool_name": tool.name,
+                        "arguments": arguments,
+                        "status": "approval_required",
+                        "approval": approval,
+                    }
 
                 log_tool(tool.name, request_id)
 

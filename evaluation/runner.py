@@ -1,8 +1,10 @@
+import asyncio
 import json
 from pathlib import Path
 
 from evaluation.metrics import answer_matches
 from evaluation.judge import judge_answer
+
 
 BASE_DIR = Path(__file__).parent
 
@@ -37,14 +39,22 @@ def evaluate_answers(actual_answers: dict[str, str]):
     for item in build_evaluation_dataset():
         actual = actual_answers.get(item["id"], "")
 
-        judge = judge_answer(item["expected"], actual)
-        
+        judge = asyncio.run(
+            judge_answer(
+                actual,
+                item["expected"],
+            )
+        )
+
         results.append({
             "id": item["id"],
             "question": item["question"],
             "expected": item["expected"],
             "actual": actual,
-            "passed": answer_matches(item["expected"], actual),
+            "passed": answer_matches(
+                item["expected"],
+                actual,
+            ),
             "judge_score": judge["score"],
             "judge_reason": judge["reason"],
         })
@@ -54,7 +64,10 @@ def evaluate_answers(actual_answers: dict[str, str]):
 
 def build_report(results):
     total = len(results)
-    passed = sum(result["passed"] for result in results)
+    passed = sum(
+        result["passed"]
+        for result in results
+    )
 
     judge_scores = [
         result["judge_score"]
@@ -85,18 +98,32 @@ if __name__ == "__main__":
 
     results = evaluate_answers(actual_answers)
 
-    with open(BASE_DIR / "evaluation_results.json", "w", encoding="utf-8") as file:
-        json.dump(results, file, indent=2)
+    with open(
+        BASE_DIR / "evaluation_results.json",
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            results,
+            file,
+            indent=2,
+        )
 
     report = build_report(results)
 
-    with open(BASE_DIR / "evaluation_report.json", "w", encoding="utf-8") as file:
-        json.dump(report, file, indent=2)
+    with open(
+        BASE_DIR / "evaluation_report.json",
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            report,
+            file,
+            indent=2,
+        )
 
     for result in results:
         print(result)
 
     print("\nEvaluation Report:")
     print(report)
-
-    
