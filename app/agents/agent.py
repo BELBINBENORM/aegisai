@@ -7,6 +7,9 @@ from app.observability.tracing import log_agent, log_tool
 from app.cache.cache import get_cached, set_cached
 from app.cache.keys import build_response_cache_key
 
+from app.security.prompt_guard import check_prompt
+from app.security.output_guard import validate_output
+
 
 class Agent:
     def __init__(
@@ -31,6 +34,8 @@ class Agent:
             query=query,
             max_steps=self.max_steps,
         )
+
+        check_prompt(query)
 
         log_agent(self.__class__.__name__, request_id)
 
@@ -120,7 +125,7 @@ class Agent:
                     continue
 
                 if response.text:
-                    state.final_answer = response.text
+                    state.final_answer = validate_output(response.text)
                     
 
                     if cache_key:

@@ -6,11 +6,14 @@ class Settings(BaseSettings):
     environment: str = "development"
     
     database_url: str
+    database_echo: bool = False
 
     gemini_api_key: str
     api_key: str
     mcp_api_key: str
 
+
+    redis_url: str | None = None
 
 
 

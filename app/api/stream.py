@@ -1,9 +1,15 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from app.api.auth import verify_api_key
+
 from fastapi.responses import StreamingResponse
 
 from app.llm.client import LLMClient
 
-router = APIRouter(prefix="/stream", tags=["stream"])
+router = APIRouter(
+    prefix="/stream",
+    tags=["stream"],
+    dependencies=[Depends(verify_api_key)],
+)
 
 client = LLMClient()
 

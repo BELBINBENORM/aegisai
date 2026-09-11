@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
+from app.config.settings import settings
 from app.mcp.routes import router
 
 
@@ -23,7 +23,7 @@ def test_mcp_accepts_valid_api_key():
 
     response = client.get(
         "/mcp/tools",
-        headers={"X-API-Key": "aegisai-mcp-key"},
+        headers={"X-API-Key": settings.mcp_api_key},
     )
 
     assert response.status_code == 200

@@ -11,7 +11,7 @@ from app.config.settings import settings
 engine = create_async_engine(
     settings.async_database_url,
     connect_args={"ssl": True},
-    echo=True,
+    echo=settings.database_echo,
     poolclass=AsyncAdaptedQueuePool,
     pool_size=10,
     max_overflow=20,

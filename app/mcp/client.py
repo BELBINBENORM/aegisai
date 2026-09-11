@@ -2,6 +2,8 @@ from typing import Any
 
 import httpx
 
+from app.config.settings import settings
+
 
 class MCPClient:
     def __init__(
@@ -10,16 +12,18 @@ class MCPClient:
         api_key: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
+        self.api_key = api_key or settings.mcp_api_key
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "X-API-Key": self.api_key,
+        }
 
     async def list_tools(self) -> list[dict[str, Any]]:
         async with httpx.AsyncClient() as client:
-            headers = {}
-            if self.api_key:
-                headers["X-API-Key"] = self.api_key
             response = await client.get(
                 f"{self.base_url}/mcp/tools",
-                headers=headers,
+                headers=self._headers(),
             )
             response.raise_for_status()
 
@@ -31,13 +35,10 @@ class MCPClient:
         arguments: dict[str, Any],
     ) -> Any:
         async with httpx.AsyncClient() as client:
-            headers = {}
-            if self.api_key:
-                headers["X-API-Key"] = self.api_key
             response = await client.post(
                 f"{self.base_url}/mcp/tools/{name}",
                 json={"arguments": arguments},
-                headers=headers,
+                headers=self._headers(),
             )
             response.raise_for_status()
 

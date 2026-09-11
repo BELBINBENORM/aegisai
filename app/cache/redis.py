@@ -1,9 +1,13 @@
-import os
 import redis.asyncio as redis
 
-REDIS_URL = os.getenv("REDIS_URL")
+from app.config.settings import settings
 
-redis_client = redis.from_url(REDIS_URL) if REDIS_URL else None
+
+redis_client = (
+    redis.from_url(settings.redis_url)
+    if settings.redis_url
+    else None
+)
 
 
 async def get_redis():

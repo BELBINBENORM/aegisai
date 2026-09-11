@@ -1,5 +1,5 @@
 from unittest.mock import AsyncMock, patch
-
+from app.config.settings import settings
 from fastapi.testclient import TestClient
 
 from app.agents.state import AgentState
@@ -23,6 +23,7 @@ def test_agent_stream():
         response = client.get(
             "/agent/stream",
             params={"prompt": "hello"},
+            headers={"X-API-Key": settings.api_key},
         )
 
     assert response.status_code == 200
@@ -31,3 +32,11 @@ def test_agent_stream():
     assert "Hello from agent" in response.text
     assert '"event": "agent_completed"' in response.text
     assert "data: [DONE]" in response.text
+
+def test_agent_stream_requires_api_key():
+    response = client.get(
+        "/agent/stream",
+        params={"prompt": "hello"},
+    )
+
+    assert response.status_code == 401

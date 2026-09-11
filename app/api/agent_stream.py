@@ -1,11 +1,17 @@
 import json
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from app.api.auth import verify_api_key
 from fastapi.responses import StreamingResponse
 
 from app.agents.agent import Agent
 
-router = APIRouter(prefix="/agent", tags=["agent"])
+router = APIRouter(
+    prefix="/agent",
+    tags=["agent"],
+    dependencies=[Depends(verify_api_key)],
+)
 
 agent = Agent()
 

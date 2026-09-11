@@ -7,7 +7,7 @@ from app.rag.query_rewriter import QueryRewriter
 from app.rag.reranker import rerank_chunks
 from app.rag.hybrid_search import hybrid_search
 from app.observability.retrieval import log_retrieval
-
+from app.security.content_guard import check_retrieved_content
 
 class RAGPipeline:
     def __init__(
@@ -60,6 +60,9 @@ class RAGPipeline:
             top_k=top_k,
         )
 
+        for chunk in ranked_chunks:
+            check_retrieved_content(chunk.content)
+            
         log_retrieval(
             request_id=request_id,
             query=query,

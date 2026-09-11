@@ -1,8 +1,10 @@
+import asyncio
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.jobs.manager import job_manager
+
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -12,8 +14,7 @@ async def create_job():
     job_id = str(uuid.uuid4())
 
     async def job():
-        # Placeholder for background work.
-        return None
+        await asyncio.sleep(1)
 
     job_manager.submit(job_id, job)
 
@@ -25,7 +26,15 @@ async def create_job():
 
 @router.get("/{job_id}")
 async def get_job(job_id: str):
+    result = job_manager.get_status(job_id)
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found",
+        )
+
     return {
         "job_id": job_id,
-        "status": "running" if job_manager.is_running(job_id) else "completed",
+        **result,
     }
