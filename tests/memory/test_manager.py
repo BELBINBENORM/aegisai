@@ -1,11 +1,12 @@
 import pytest
 
+from app.memory.local_store import LocalMemoryStore
 from app.memory.manager import MemoryManager
 
 
 @pytest.mark.asyncio
 async def test_remember_creates_and_saves_memory():
-    manager = MemoryManager()
+    manager = MemoryManager(LocalMemoryStore())
 
     memory = await manager.remember(
         user_id="user-1",
@@ -24,7 +25,7 @@ async def test_remember_creates_and_saves_memory():
 
 @pytest.mark.asyncio
 async def test_list_user_memories():
-    manager = MemoryManager()
+    manager = MemoryManager(LocalMemoryStore())
 
     memory1 = await manager.remember(
         user_id="user-1",
@@ -43,7 +44,7 @@ async def test_list_user_memories():
 
 @pytest.mark.asyncio
 async def test_search_user_memories():
-    manager = MemoryManager()
+    manager = MemoryManager(LocalMemoryStore())
 
     memory = await manager.remember(
         user_id="user-1",
@@ -55,6 +56,9 @@ async def test_search_user_memories():
         content="User likes Python.",
     )
 
-    result = await manager.search("user-1", "concise")
+    result = await manager.search(
+        "user-1",
+        "concise",
+    )
 
     assert result == [memory]

@@ -8,7 +8,10 @@ from app.memory.store import MemoryStore
 
 
 class MemoryManager:
-    def __init__(self, store: MemoryStore | None = None) -> None:
+    def __init__(
+        self,
+        store: MemoryStore | None = None,
+    ) -> None:
         self.store = store or LocalMemoryStore()
 
     async def remember(
