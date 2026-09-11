@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     gemini_api_key: str
     api_key: str
+    mcp_api_key: str
 
 
 

@@ -1,5 +1,5 @@
 from typing import Any
-
+from pydantic import Field
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
@@ -30,7 +30,7 @@ server = MCPServer()
 server.register_tool(EchoTool())
 
 class ToolCallRequest(BaseModel):
-    arguments: dict[str, Any] = {}
+    arguments: dict[str, Any] = Field(default_factory=dict)
 
 
 @router.get("/tools", dependencies=[Depends(require_api_key)])

@@ -1,8 +1,9 @@
 from fastapi import Header, HTTPException
+from app.config.settings import settings
 
 
 VALID_API_KEYS = {
-    "aegisai-mcp-key": {"echo"},
+    settings.mcp_api_key: {"echo"},
 }
 
 
