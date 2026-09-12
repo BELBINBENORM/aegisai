@@ -2,7 +2,7 @@ from app.agents.state import AgentState
 from app.agents.tool import Tool
 from app.agents.tool_runner import ToolRunner
 from app.memory.manager import MemoryManager
-from app.observability.tracing import log_agent, log_tool
+from app.observability.tracing import log_agent
 
 from app.cache.cache import get_cached, set_cached
 from app.cache.keys import build_response_cache_key
@@ -53,8 +53,9 @@ class Agent:
             if cached_answer:
                 state.final_answer = cached_answer
                 return state
-            
+
         try:
+            # Load semantic memory
             if self.memory_manager and user_id:
                 memories = await self.memory_manager.search(
                     user_id=user_id,
@@ -69,6 +70,7 @@ class Agent:
                         memory.content,
                     )
 
+            # Agent loop
             while state.can_continue():
                 state.increment_step()
 
@@ -77,6 +79,7 @@ class Agent:
                     tools=tools,
                 )
 
+                # Tool call requested by LLM
                 if response.function_calls:
                     function_call = response.function_calls[0]
 
@@ -96,20 +99,59 @@ class Agent:
 
                     arguments = function_call.args or {}
 
-                    log_tool(tool.name, request_id)
-
                     if self.event_callback:
                         await self.event_callback(
                             "tool_started",
-                            {"tool": tool.name},
+                            {
+                                "tool": tool.name,
+                            },
                         )
 
-                    result = await tool.execute(**arguments)
+                    # Execute through ToolRunner so HITL approval
+                    # cannot be bypassed.
+                    tool_result = await self.tool_runner.run_tool(
+                        tool=tool,
+                        arguments=arguments,
+                        request_id=request_id,
+                    )
+
+                    # Human approval required
+                    if tool_result.get("status") == "approval_required":
+                        state.error = "Tool execution requires approval."
+
+                        state.add_tool_call(
+                            name=tool.name,
+                            arguments=arguments,
+                        )
+
+                        state.add_message(
+                            "tool",
+                            str(tool_result),
+                        )
+
+                        if self.event_callback:
+                            await self.event_callback(
+                                "approval_required",
+                                {
+                                    "tool": tool.name,
+                                    "arguments": arguments,
+                                    "approval": tool_result.get(
+                                        "approval"
+                                    ),
+                                },
+                            )
+
+                        break
+
+                    # Tool execution completed
+                    result = tool_result["result"]
 
                     if self.event_callback:
                         await self.event_callback(
                             "tool_completed",
-                            {"tool": tool.name},
+                            {
+                                "tool": tool.name,
+                            },
                         )
 
                     state.add_tool_call(
@@ -124,9 +166,11 @@ class Agent:
 
                     continue
 
+                # Final LLM response
                 if response.text:
-                    state.final_answer = validate_output(response.text)
-                    
+                    state.final_answer = validate_output(
+                        response.text
+                    )
 
                     if cache_key:
                         await set_cached(
@@ -135,10 +179,12 @@ class Agent:
                             expire=300,
                         )
 
-                    break  
-                     
+                    break
+
             if state.final_answer is None and state.error is None:
-                state.error = "Agent reached the maximum step limit."
+                state.error = (
+                    "Agent reached the maximum step limit."
+                )
 
         except Exception as exc:
             state.error = str(exc)

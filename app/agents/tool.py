@@ -7,6 +7,10 @@ class Tool(ABC):
     description: str
     parameters: dict[str, Any]
 
+    # Sensitive tools require human approval before execution.
+    # Normal tools execute without approval.
+    requires_approval: bool = False
+
     @property
     def function_declaration(self) -> dict[str, Any]:
         return {
