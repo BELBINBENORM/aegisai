@@ -56,3 +56,4 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aegisai
           API_KEY: ci-key
           MCP_API_KEY: ci-mcp-key
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
