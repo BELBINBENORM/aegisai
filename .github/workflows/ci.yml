@@ -1,26 +1,49 @@
 name: CI
-on: [push,pull_request]
+
+on: [push, pull_request]
+
 jobs:
   test:
     runs-on: ubuntu-latest
+
     services:
       postgres:
         image: pgvector/pgvector:pg17
-        env: {POSTGRES_DB: aegisai, POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres}
-        ports: ["5432:5432"]
+        env:
+          POSTGRES_DB: aegisai
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - "5432:5432"
         options: >-
           --health-cmd "pg_isready -U postgres -d aegisai"
-          --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
       redis:
         image: redis:8-alpine
-        ports: ["6379:6379"]
+        ports:
+          - "6379:6379"
+
     steps:
       - uses: actions/checkout@v5
+
       - uses: actions/setup-python@v6
-        with: {python-version: '3.13'}
+        with:
+          python-version: "3.13"
+
       - run: pip install -r requirements.txt
+
       - run: python -m compileall app worker evaluation
-      - run: pytest -q
+
+      - name: Run database migrations
+        run: alembic upgrade head
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aegisai
+
+      - name: Run tests
+        run: pytest -q
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aegisai
           API_KEY: ci-key
