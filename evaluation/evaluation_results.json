@@ -1,0 +1,29 @@
+[
+  {
+    "id": "q1",
+    "question": "What is Python?",
+    "expected": "Python is a programming language.",
+    "actual": "Python is a programming language.",
+    "passed": true,
+    "judge_score": 1,
+    "judge_reason": "Answer matches expected answer"
+  },
+  {
+    "id": "q2",
+    "question": "What is retrieval augmented generation?",
+    "expected": "RAG combines retrieval with generation to answer using external context.",
+    "actual": "RAG combines retrieval with generation to answer using external context.",
+    "passed": true,
+    "judge_score": 1,
+    "judge_reason": "Answer matches expected answer"
+  },
+  {
+    "id": "q3",
+    "question": "What is an AI agent?",
+    "expected": "An AI agent can reason, use tools, and perform tasks.",
+    "actual": "An AI agent can reason, use tools, and perform tasks.",
+    "passed": true,
+    "judge_score": 1,
+    "judge_reason": "Answer matches expected answer"
+  }
+]

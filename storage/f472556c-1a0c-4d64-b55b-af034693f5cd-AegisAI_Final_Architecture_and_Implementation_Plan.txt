@@ -1,0 +1,1871 @@
+AEGISAI - FINAL ARCHITECTURE AND IMPLEMENTATION PLAN
+========================================================
+
+Document purpose
+----------------
+This document defines the architecture for the  AegisAI Project.
+
+The project is a study-focused, production-oriented AI engineering system.
+
+Deployment target:
+- Render for application/worker deployment
+- Neon PostgreSQL for durable database storage
+- PostgreSQL + pgvector for relational and vector data
+- Redis for cache, rate limiting, and background job queue
+- Freely available services should be preferred where practical
+
+CORE DESIGN PRINCIPLE
+---------------------
+FastAPI manages the system.
+PostgreSQL stores durable data.
+Redis handles fast temporary data, cache, rate limiting and queues.
+Background workers process asynchronous jobs.
+MCP provides controlled capabilities.
+One Main Agent performs planning, tool selection, reasoning and synthesis.
+Verification checks generated answers.
+The client interacts mainly through Session, Document and Chat APIs.
+
+The system deliberately does NOT use:
+- RAG Agent
+- Research Agent
+- Tool Agent
+- Supervisor + multiple sub-agents
+- Separate Verification Agent
+- Human approval workflow
+- Utility MCP tools such as calculator
+
+The system DOES use:
+- One Main Agent
+- MCP tools
+- Advanced RAG
+- Memory
+- Web search
+- Security
+- Redis cache
+- Background processing
+- Verification
+- Clarification
+- Streaming
+- Observability
+- Evaluation
+- Authentication/authorization
+- Docker
+- CI/CD
+- Testing
+- Deployment
+
+========================================================
+1. HIGH-LEVEL ARCHITECTURE
+========================================================
+
+CLIENT
+  |
+  +--> Session APIs
+  |
+  +--> Document APIs
+  |
+  +--> Chat APIs
+          |
+          v
+     API Security
+     - authentication
+     - authorization
+     - rate limiting
+     - validation
+     - prompt/security checks
+          |
+          v
+      Main Agent
+          |
+          v
+      MCP Client
+          |
+          v
+      MCP Server
+          |
+          +--> RAG tools
+          +--> Memory tools
+          +--> Web search
+          |
+          v
+      Tool Results
+          |
+          v
+      Main Agent
+          |
+          +--> needs clarification?
+          |       |
+          |       +--> structured options
+          |       +--> recommended option
+          |       +--> user answer
+          |       +--> continue
+          |
+          v
+      Verification
+          |
+          v
+      Final Answer
+          |
+          +--> streaming
+          +--> store message/memory
+          +--> observability
+          +--> evaluation
+
+Document ingestion is separate:
+
+CLIENT
+  |
+  v
+Document Upload API
+  |
+  v
+Validation + Security
+  |
+  v
+PostgreSQL document record
+  |
+  v
+Redis Queue
+  |
+  v
+Background Worker
+  |
+  +--> extract
+  +--> clean
+  +--> chunk
+  +--> metadata
+  +--> embed
+  +--> vector storage
+  +--> keyword indexing
+  |
+  v
+PostgreSQL + pgvector
+  |
+  v
+Document READY
+
+
+========================================================
+2. EXTERNAL API DESIGN
+========================================================
+
+2.1 Session APIs
+----------------
+
+POST   /sessions
+GET    /sessions
+GET    /sessions/{session_id}
+PATCH  /sessions/{session_id}
+DELETE /sessions/{session_id}
+
+Purpose:
+- create a named session
+- retrieve session information
+- update session name/metadata
+- delete a session and its permitted associated data
+- list sessions belonging to the authenticated user
+
+Example:
+
+POST /sessions
+
+{
+    "name": "AI Research Session"
+}
+
+Response:
+
+{
+    "session_id": "...",
+    "name": "AI Research Session",
+    "status": "active"
+}
+
+
+2.2 Document APIs
+-----------------
+
+POST   /sessions/{session_id}/documents
+GET    /sessions/{session_id}/documents
+GET    /sessions/{session_id}/documents/{document_id}
+DELETE /sessions/{session_id}/documents/{document_id}
+
+POST /sessions/{session_id}/documents accepts multipart file upload.
+
+Supported initial formats should be practical text/document formats such as:
+- PDF
+- DOCX
+- TXT
+
+Additional formats can be added only when their extraction pipeline is implemented and tested.
+
+Document upload response should identify:
+- document_id
+- filename
+- session_id
+- status
+- job_id if asynchronous processing is used
+
+Typical status values:
+- uploaded
+- processing
+- ready
+- failed
+
+
+2.3 Chat APIs
+-------------
+
+POST /sessions/{session_id}/chat
+POST /sessions/{session_id}/chat/stream
+
+The normal chat endpoint returns a structured response.
+
+The streaming endpoint returns incremental events.
+
+Both endpoints invoke the same Main Agent workflow.
+
+
+2.4 Job API
+-----------
+
+GET /jobs/{job_id}
+
+Used to inspect asynchronous document-ingestion state.
+
+A job should contain:
+- job_id
+- type
+- status
+- progress if available
+- created_at
+- started_at
+- completed_at
+- error information when failed
+
+
+2.5 Health
+----------
+
+GET /health
+
+Health should distinguish basic application availability from dependency health where appropriate.
+
+Examples:
+- application alive
+- database available
+- Redis available
+- MCP available
+
+
+2.6 MCP APIs
+------------
+
+GET  /mcp/tools
+POST /mcp/tools/{name}
+GET  /mcp/resources
+GET  /mcp/prompts
+
+MCP endpoints must have their own MCP authentication and authorization boundary.
+
+The normal application API key must not accidentally override or conflict with MCP-specific authentication.
+
+
+========================================================
+3. SESSION WORKFLOW
+========================================================
+
+Client creates a session.
+
+POST /sessions
+        |
+        v
+Authentication
+        |
+        v
+Authorization
+        |
+        v
+Validate request
+        |
+        v
+Create session in PostgreSQL
+        |
+        v
+Return session_id
+
+Session is the root context for:
+- messages
+- uploaded documents
+- document chunks
+- memories
+- agent runs
+- tool calls
+- evaluation context where applicable
+
+
+========================================================
+4. DOCUMENT UPLOAD AND INGESTION
+========================================================
+
+The client uploads a document to a session.
+
+POST /sessions/{session_id}/documents
+
+Workflow:
+
+1. Authenticate user.
+2. Authorize access to the session.
+3. Validate filename and file type.
+4. Enforce file size limits.
+5. Perform security checks.
+6. Create document metadata record.
+7. Mark document as processing.
+8. Enqueue ingestion job.
+9. Worker processes the document.
+10. Extract text.
+11. Clean/normalize text.
+12. Split into chunks.
+13. Attach chunk metadata.
+14. Generate embeddings.
+15. Store chunks and embeddings.
+16. Build/update keyword-search representation.
+17. Mark document ready.
+18. Record failures and retry where appropriate.
+
+Important:
+The Main Agent does NOT chunk or embed documents during chat.
+
+Chunking and embedding happen during ingestion.
+
+
+========================================================
+5. DOCUMENT STORAGE
+========================================================
+
+Neon PostgreSQL is the primary durable database.
+
+Use PostgreSQL for:
+- users
+- sessions
+- messages
+- documents
+- document chunks
+- embeddings
+- memories
+- agent runs
+- tool calls
+- jobs
+- evaluations
+
+Use pgvector for:
+- document chunk embeddings
+- semantic memory embeddings
+- other vector data required by the system
+
+Object/file storage is separate from relational metadata.
+
+For the first study version, the application may keep uploaded files in a configurable object-storage layer rather than putting large binary files directly into PostgreSQL.
+
+The storage interface should be abstracted so the project can use a free/low-cost object-storage provider when available, while allowing a local filesystem for development.
+
+Do not make the application depend permanently on a single vendor-specific storage API.
+
+
+========================================================
+6. REDIS
+========================================================
+
+Redis is not the permanent database.
+
+Redis has three main responsibilities:
+
+A. Cache
+B. Rate limiting
+C. Background job queue/state
+
+6.1 Cache
+---------
+
+Chat or retrieval results that are safe to reuse can be cached.
+
+Flow:
+
+request
+  |
+  v
+cache lookup
+  |
+  +--> HIT --> return/reuse result
+  |
+  +--> MISS
+          |
+          v
+       Main Agent
+          |
+          v
+       MCP/tools
+          |
+          v
+       answer
+          |
+          v
+       cache where safe
+
+Important:
+Do not cache a session-specific answer under a key that can be reused by another user/session.
+
+Cache keys must include relevant identity/session/document/model/prompt-version information.
+
+6.2 Rate limiting
+-----------------
+
+Use Redis so rate limits work across multiple application instances/workers.
+
+Rate limits should be applied to:
+- chat
+- document upload
+- expensive operations
+- MCP calls where appropriate
+
+6.3 Background queue
+--------------------
+
+Document ingestion:
+
+Upload API
+   |
+   v
+Redis queue
+   |
+   v
+Worker
+   |
+   v
+extract/chunk/embed/index
+
+Jobs must support:
+- retries
+- failure status
+- idempotency
+- timeouts
+- logging
+- recovery
+
+
+========================================================
+7. MAIN AGENT
+========================================================
+
+There is exactly one Main Agent in the core architecture.
+
+Responsibilities:
+- understand user intent
+- inspect conversation context
+- determine whether documents are relevant
+- determine whether web information is needed
+- plan tool usage
+- call MCP tools
+- inspect returned evidence
+- decide whether more information is needed
+- ask clarification when required
+- perform final reasoning
+- request additional retrieval when evidence is insufficient
+- prepare final answer
+- provide citations/evidence references where applicable
+
+The Main Agent is NOT responsible for:
+- directly accessing PostgreSQL
+- directly accessing Redis
+- directly manipulating vector indexes
+- document parsing
+- document chunking
+- embedding generation
+- unrestricted web access
+- unrestricted code execution
+
+
+========================================================
+8. MAIN AGENT DECISION LOOP
+========================================================
+
+User question
+      |
+      v
+Security checks
+      |
+      v
+Load session context
+      |
+      v
+Main Agent
+      |
+      v
+Understand + plan
+      |
+      +--> enough existing context?
+      |       |
+      |       +--> YES --> reason
+      |
+      +--> need information?
+              |
+              v
+          MCP tools
+              |
+              +--> RAG
+              +--> Memory
+              +--> Web
+              |
+              v
+          Tool results
+              |
+              v
+          Main Agent
+              |
+              +--> insufficient/ambiguous?
+              |        |
+              |        v
+              |   clarification
+              |        |
+              |        v
+              |      user
+              |        |
+              |        v
+              |   continue loop
+              |
+              v
+          Verification
+              |
+              v
+          Final answer
+
+
+The loop must have hard limits:
+- maximum tool iterations
+- maximum clarification count
+- maximum execution time
+- maximum token/tool budget
+
+
+========================================================
+9. MCP ARCHITECTURE
+========================================================
+
+MCP is the controlled capability layer.
+
+Main Agent
+    |
+    v
+MCP Client
+    |
+    v
+MCP Server
+    |
+    +--> permission check
+    +--> schema validation
+    +--> tool execution
+    |
+    v
+tool result
+    |
+    v
+MCP Client
+    |
+    v
+Main Agent
+
+
+MCP tools:
+
+DOCUMENT / RAG
+- get_documents
+- get_document
+- get_document_chunks
+- vector_search
+- keyword_search
+- hybrid_search
+
+MEMORY
+- get_chat_history
+- get_conversation
+
+RESEARCH
+- search_web
+
+No utility MCP tools such as calculator are required in this architecture.
+
+MCP must enforce:
+- authentication
+- authorization
+- tool allow-listing
+- argument schema validation
+- result validation
+- timeout
+- error handling
+- audit logging
+
+
+========================================================
+10. RAG ARCHITECTURE
+========================================================
+
+The RAG system is advanced but modular.
+
+Question
+   |
+   v
+Security / injection check
+   |
+   v
+Query understanding
+   |
+   v
+Query rewrite when useful
+   |
+   +----------------------+
+   |                      |
+   v                      v
+Vector search        Keyword search
+   |                      |
+   +----------+-----------+
+              |
+              v
+        Hybrid retrieval
+              |
+              v
+       Metadata filtering
+              |
+              v
+          Reranking
+              |
+              v
+     Context compression
+              |
+              v
+       Relevant evidence
+              |
+              v
+        Main Agent
+              |
+              v
+      answer + citations
+
+RAG should support:
+- embeddings
+- chunk metadata
+- vector search
+- keyword/BM25 search
+- hybrid retrieval
+- metadata filters
+- reranking
+- context compression
+- citations
+- retrieval evaluation
+
+Do not blindly add every possible RAG technique. Add techniques that are testable and demonstrably useful.
+
+
+========================================================
+11. DOCUMENT CHUNKING
+========================================================
+
+Chunking must be safe and deterministic.
+
+Requirements:
+- configurable chunk size
+- configurable overlap
+- overlap must be smaller than chunk size
+- no infinite loops
+- preserve useful metadata
+- retain document_id
+- retain session_id
+- retain page/section information when available
+- deterministic chunk identifiers where practical
+
+Example metadata:
+
+{
+    "document_id": "...",
+    "page": 12,
+    "section": "Revenue",
+    "chunk_index": 8
+}
+
+
+========================================================
+12. MEMORY
+========================================================
+
+Memory has three conceptual layers:
+
+1. Short-term state
+2. Conversation history
+3. Long-term/semantic memory
+
+Conversation history is durable in PostgreSQL.
+
+Semantic memories may use pgvector.
+
+Memory workflow:
+
+User message
+    |
+    v
+Main Agent
+    |
+    v
+retrieve relevant history/memory
+    |
+    v
+reason
+    |
+    v
+answer
+    |
+    v
+memory decision
+    |
+    +--> not useful --> normal conversation storage
+    |
+    +--> useful --> summarize
+                         |
+                         v
+                       embed
+                         |
+                         v
+                   PostgreSQL/pgvector
+
+Memory must include:
+- relevance
+- cleanup
+- retention rules
+- safety controls
+- privacy boundaries
+- user/session ownership
+
+
+========================================================
+13. CLARIFICATION SYSTEM
+========================================================
+
+Traditional Human-in-the-Loop approval is removed.
+
+Instead, AegisAI uses Agent Clarification / User Interaction.
+
+The Main Agent asks the user for additional information only when needed.
+
+Example:
+
+{
+    "type": "clarification",
+    "message": "Which revenue period should I compare?",
+    "options": [
+        {
+            "id": "latest",
+            "label": "Latest available period",
+            "recommended": true
+        },
+        {
+            "id": "2025",
+            "label": "FY 2025",
+            "recommended": false
+        },
+        {
+            "id": "2024",
+            "label": "FY 2024",
+            "recommended": false
+        }
+    ],
+    "allow_custom": true
+}
+
+The Main Agent chooses the recommended option based on its best interpretation.
+
+The user can:
+- select the recommended option
+- select another option
+- provide custom text
+
+Nested clarification is supported.
+
+Example:
+
+Question
+  |
+  v
+Clarification #1
+  |
+  v
+User answer
+  |
+  v
+Main Agent
+  |
+  v
+Clarification #2
+  |
+  v
+User answer
+  |
+  v
+Continue execution
+
+A hard maximum clarification count is required.
+
+
+========================================================
+14. VERIFICATION
+========================================================
+
+Verification is a component/service, not another agent.
+
+Candidate answer
+    |
+    v
+Verification
+    |
+    +--> evidence supported?
+    +--> citations valid?
+    +--> contradictions?
+    +--> unsupported claims?
+    +--> sufficient evidence?
+    |
+    +--> FAIL --> retrieve/reason again
+    |
+    +--> PASS --> final answer
+
+Verification should be strongest for:
+- document-grounded answers
+- web-supported answers
+- citation-heavy answers
+- answers combining multiple sources
+
+
+========================================================
+15. WEB RESEARCH
+========================================================
+
+The Main Agent may use the MCP web-search capability when the question requires:
+- current information
+- external information
+- information not contained in uploaded documents
+
+Example:
+
+"Compare my uploaded report with current information online."
+
+Main Agent
+  |
+  +--> hybrid_search(document)
+  |
+  +--> search_web(query)
+  |
+  v
+combine evidence
+  |
+  v
+verify
+  |
+  v
+final answer with source references
+
+
+========================================================
+16. SECURITY
+========================================================
+
+Request security pipeline:
+
+Client
+  |
+  v
+Authentication
+  |
+  v
+Authorization
+  |
+  v
+Rate limiting
+  |
+  v
+Input validation
+  |
+  v
+Prompt injection checks
+  |
+  v
+Main Agent
+  |
+  v
+MCP authorization
+  |
+  v
+Tool schema validation
+  |
+  v
+Tool execution
+  |
+  v
+Output validation
+
+
+Security requirements:
+- do not trust client-provided user IDs
+- use authenticated identity
+- enforce session ownership
+- enforce document ownership
+- protect MCP tools
+- protect secrets
+- validate uploads
+- limit file sizes
+- defend against malicious documents
+- defend against indirect prompt injection
+- protect PII
+- prevent cross-user data leakage
+- limit tool calls
+- limit loops
+- limit tokens
+- enforce timeouts
+- validate model/tool output
+
+
+========================================================
+17. AUTHENTICATION AND AUTHORIZATION
+========================================================
+
+Authentication identifies the caller.
+
+Authorization determines:
+- which sessions they can access
+- which documents they can access
+- which operations they can perform
+- which MCP tools are permitted
+
+Do not use a freely supplied X-User-ID as trusted identity.
+
+API keys or another authentication mechanism may be used for the study deployment, but the code should keep identity extraction behind an abstraction so stronger authentication can be added later.
+
+
+========================================================
+18. BACKGROUND JOBS
+========================================================
+
+Background processing is required for expensive asynchronous operations.
+
+Primary job:
+Document ingestion.
+
+Potential future jobs:
+- memory summarization
+- evaluation runs
+- cleanup
+- re-indexing
+
+Job lifecycle:
+
+queued
+  |
+  v
+running
+  |
+  +--> completed
+  |
+  +--> failed
+           |
+           v
+        retry if safe
+
+Jobs must be persistent enough to survive an application restart.
+
+Do not rely only on asyncio.create_task() for durable jobs.
+
+
+========================================================
+19. STREAMING
+========================================================
+
+Chat streaming endpoint:
+
+POST /sessions/{session_id}/chat/stream
+
+Suggested event types:
+
+- request_started
+- agent_started
+- planning
+- tool_started
+- retrieval
+- tool_result
+- clarification
+- verification
+- token
+- final
+- error
+
+Streaming should actually emit incremental events/tokens rather than collecting the complete response and sending it as one chunk.
+
+
+========================================================
+20. CACHING
+========================================================
+
+Caching should be selective.
+
+Good cache candidates:
+- safe retrieval results
+- repeated expensive operations
+- stable tool results where appropriate
+- selected final responses when identity/context is part of the key
+
+Cache invalidation is required when:
+- document content changes
+- document is deleted
+- retrieval configuration changes
+- prompt/model version changes where relevant
+
+Never allow one user's cached data to become visible to another user.
+
+
+========================================================
+21. OBSERVABILITY
+========================================================
+
+Every request should be traceable.
+
+Example:
+
+Request ID
+  |
+  +--> API
+  |
+  +--> Main Agent
+  |
+  +--> MCP Client
+  |
+  +--> MCP Tool
+  |
+  +--> RAG
+  |
+  +--> Memory
+  |
+  +--> Web
+  |
+  +--> Verification
+  |
+  +--> Final answer
+
+Capture:
+- request ID
+- session ID
+- authenticated user
+- model
+- tool calls
+- tool latency
+- retrieval information
+- token usage
+- estimated cost
+- retries
+- errors
+- final status
+
+Avoid logging:
+- secrets
+- raw sensitive data
+- unnecessary PII
+- complete confidential document contents
+
+
+========================================================
+22. EVALUATION
+========================================================
+
+Evaluation is separate from normal production execution.
+
+Evaluate:
+
+RETRIEVAL
+- precision
+- recall
+- context relevance
+
+ANSWER
+- relevance
+- faithfulness
+- groundedness
+- citation correctness
+- hallucination
+
+AGENT
+- tool selection
+- tool argument correctness
+- task success
+- clarification behavior
+
+Keep metrics semantically separate.
+
+Exact-match accuracy is not the same thing as an LLM judge score.
+
+Evaluation results should be stored so runs can be compared over time.
+
+
+========================================================
+23. DATABASE MODEL
+========================================================
+
+Suggested core tables:
+
+users
+sessions
+messages
+documents
+document_chunks
+memories
+agent_runs
+tool_calls
+jobs
+evaluations
+
+Relationships:
+
+User
+ |
+ +--> Sessions
+       |
+       +--> Messages
+       +--> Documents
+       |      |
+       |      +--> Document Chunks
+       |              |
+       |              +--> Embeddings
+       |
+       +--> Memories
+       |
+       +--> Agent Runs
+              |
+              +--> Tool Calls
+
+Document chunks contain:
+- document_id
+- session_id
+- chunk text
+- metadata
+- embedding
+- keyword-search fields where applicable
+
+
+========================================================
+24. FILE STORAGE
+========================================================
+
+Do not use PostgreSQL as the primary storage location for large uploaded binary files.
+
+Use a storage abstraction:
+
+FileStorage
+  |
+  +--> local filesystem (development)
+  |
+  +--> free/low-cost object storage (deployment)
+
+The database stores:
+- file metadata
+- storage key/path
+- checksum
+- size
+- MIME type
+- status
+
+This makes deployment flexible and avoids tying core application logic to one provider.
+
+
+========================================================
+25. RENDER + NEON DEPLOYMENT
+========================================================
+
+Target deployment:
+
+Render
+- FastAPI web service
+- background worker if the selected Render plan supports the required worker model
+- environment variables/secrets
+- health checks
+
+Neon
+- PostgreSQL
+- pgvector if enabled/available for the selected database setup
+
+Redis
+- Use a free/low-cost Redis-compatible service if available and suitable.
+- If a permanently free hosted Redis option is not available, keep Redis configurable and use a local Redis container for development.
+- Do not hard-code a specific provider into application logic.
+
+File storage
+- Prefer a free/low-cost object-storage service with a suitable free tier.
+- Keep local filesystem storage for development.
+- Because free-tier limits change, the storage adapter must be provider-neutral.
+
+LLM
+- Keep model provider configurable.
+- Support a provider with a free/low-cost tier where available.
+- Do not assume unlimited free inference.
+
+Web search
+- Use a provider with a free/low-cost tier when available.
+- Keep the search implementation behind an interface/MCP tool.
+
+
+========================================================
+26. DEVELOPMENT ENVIRONMENT
+========================================================
+
+Local development should be Docker-friendly.
+
+Suggested services:
+
+docker compose
+  |
+  +--> FastAPI
+  +--> PostgreSQL
+  +--> Redis
+  +--> Worker
+  +--> MCP server
+
+For development, Neon can optionally replace local PostgreSQL, but local Docker PostgreSQL is useful for repeatable tests.
+
+Automated tests should be able to run without requiring paid external services.
+
+
+========================================================
+27. TESTING STRATEGY
+========================================================
+
+Pytest is mandatory.
+
+Test categories:
+
+tests/
+  unit/
+  api/
+  agents/
+  rag/
+  mcp/
+  memory/
+  security/
+  jobs/
+  cache/
+  evaluation/
+  integration/
+
+Unit tests:
+- chunking
+- metadata
+- cache keys
+- rate limiting logic
+- prompt/security checks
+- agent decisions
+- verification
+- schemas
+
+API tests:
+- sessions
+- documents
+- chat
+- streaming
+- jobs
+- authentication
+- authorization
+
+RAG tests:
+- vector search
+- keyword search
+- hybrid search
+- metadata filtering
+- reranking
+- citations
+- context compression
+
+MCP tests:
+- discovery
+- authentication
+- authorization
+- schemas
+- tool execution
+- invalid arguments
+- unavailable tools
+
+Memory tests:
+- history retrieval
+- semantic memory
+- ownership
+- cleanup
+- retention
+
+Job tests:
+- enqueue
+- worker
+- retry
+- failure
+- idempotency
+- status transitions
+
+Cache tests:
+- hit
+- miss
+- expiration
+- invalidation
+- isolation
+
+Security tests:
+- prompt injection
+- indirect injection
+- malicious upload
+- unauthorized session
+- unauthorized document
+- unauthorized MCP tool
+- cross-user leakage
+
+End-to-end:
+Create session
+  |
+  v
+Upload document
+  |
+  v
+Ingest
+  |
+  v
+Ask question
+  |
+  v
+Main Agent
+  |
+  v
+MCP
+  |
+  v
+RAG
+  |
+  v
+Verification
+  |
+  v
+Final answer
+
+The entire flow must be covered by integration tests.
+
+
+========================================================
+28. CI/CD
+========================================================
+
+GitHub Actions should run:
+
+1. formatting/linting
+2. type checks where configured
+3. unit tests
+4. API tests
+5. integration tests
+6. security-related tests
+7. build checks
+
+Deployment should happen only after the test pipeline passes.
+
+
+========================================================
+29. PROJECT STRUCTURE
+========================================================
+
+Recommended structure:
+
+app/
+  api/
+    sessions.py
+    documents.py
+    chat.py
+    jobs.py
+    health.py
+    auth.py
+    rate_limit.py
+
+  agents/
+    main_agent.py
+    prompts.py
+    verification.py
+    clarification.py
+
+  mcp/
+    client.py
+    server.py
+    auth.py
+    routes.py
+    tools/
+      rag.py
+      memory.py
+      web.py
+
+  rag/
+    ingestion.py
+    loaders/
+    chunking.py
+    embeddings.py
+    retrieval.py
+    hybrid.py
+    reranking.py
+    compression.py
+    citations.py
+
+  memory/
+    service.py
+    retrieval.py
+    summarization.py
+
+  documents/
+    service.py
+    storage.py
+    validation.py
+
+  jobs/
+    queue.py
+    worker.py
+    models.py
+
+  cache/
+    redis.py
+    keys.py
+
+  security/
+    prompt_guard.py
+    pii.py
+    file_security.py
+
+  database/
+    models/
+    repositories/
+    connection.py
+
+  observability/
+    tracing.py
+    metrics.py
+    logging.py
+
+  evaluation/
+    datasets.py
+    metrics.py
+    runner.py
+
+  config/
+    settings.py
+
+tests/
+  unit/
+  api/
+  agents/
+  rag/
+  mcp/
+  memory/
+  security/
+  jobs/
+  cache/
+  evaluation/
+  integration/
+
+docker/
+scripts/
+.github/workflows/
+
+
+========================================================
+30. COMPLETE CHAT EXAMPLE
+========================================================
+
+User:
+
+"Compare the revenue in my uploaded report with the latest information online."
+
+Step 1:
+FastAPI receives the request.
+
+Step 2:
+Authenticate and authorize.
+
+Step 3:
+Rate limit.
+
+Step 4:
+Security checks.
+
+Step 5:
+Load session and relevant conversation.
+
+Step 6:
+Main Agent plans:
+
+"I need document evidence and current web information."
+
+Step 7:
+Main Agent calls MCP:
+
+hybrid_search(session_id, "revenue")
+
+and
+
+search_web("latest revenue information")
+
+Step 8:
+MCP validates permissions and arguments.
+
+Step 9:
+RAG performs:
+- vector search
+- keyword search
+- hybrid ranking
+- reranking
+- context compression
+
+Step 10:
+Web tool returns external evidence.
+
+Step 11:
+Results return through MCP to Main Agent.
+
+Step 12:
+Main Agent compares evidence.
+
+Step 13:
+If ambiguity exists:
+
+{
+  "type": "clarification",
+  "options": [...],
+  "recommended": "..."
+}
+
+Step 14:
+User answers.
+
+Step 15:
+Main Agent continues.
+
+Step 16:
+Verification checks:
+- evidence
+- citations
+- contradictions
+- unsupported claims
+
+Step 17:
+Final answer is returned.
+
+Step 18:
+Conversation is stored.
+
+Step 19:
+Relevant memory is stored if appropriate.
+
+Step 20:
+Observability records the execution trace.
+
+
+========================================================
+31. COMPLETE UPLOAD EXAMPLE
+========================================================
+
+User:
+
+POST /sessions/123/documents
+
+report.pdf
+
+Flow:
+
+FastAPI
+  |
+  +--> authenticate
+  +--> authorize
+  +--> validate file
+  +--> security scan
+  |
+  v
+PostgreSQL
+  |
+  +--> document(status=processing)
+  |
+  v
+Redis queue
+  |
+  v
+Worker
+  |
+  +--> extract PDF text
+  +--> clean text
+  +--> chunk
+  +--> metadata
+  +--> embeddings
+  +--> PostgreSQL/pgvector
+  +--> keyword index
+  |
+  v
+document(status=ready)
+
+The user can then ask:
+
+"What does this report say about revenue?"
+
+The Main Agent uses MCP RAG tools to retrieve the processed document information.
+
+
+========================================================
+32. ERROR AND RECOVERY DESIGN
+========================================================
+
+Failures must be explicit.
+
+Examples:
+
+LLM failure
+  -> retry with bounded policy
+  -> return safe error if exhausted
+
+MCP failure
+  -> retry if safe
+  -> record tool failure
+  -> continue only if sufficient information remains
+
+RAG failure
+  -> report retrieval failure
+  -> do not invent evidence
+
+Web search failure
+  -> continue with document-only evidence if appropriate
+  -> clearly state limitation when relevant
+
+Worker failure
+  -> mark job failed
+  -> retry if safe
+  -> retain diagnostic information
+
+Clarification timeout
+  -> session remains resumable
+  -> no lost state
+
+Database failure
+  -> fail safely
+  -> do not claim successful persistence
+
+All retries must be bounded and idempotent where required.
+
+
+========================================================
+33. WHAT IS NOT INCLUDED
+========================================================
+
+The following are intentionally excluded from the core architecture:
+
+- multiple autonomous agents
+- separate RAG Agent
+- separate Research Agent
+- separate Coding Agent
+- separate Image Agent
+- separate Video Agent
+- unrestricted code execution
+- unrestricted global tool access
+- utility MCP tools
+- Human approval workflow
+
+Coding/Image/Video can be future optional modules.
+
+If coding is later added, it must run inside a sandboxed isolated execution environment with CPU, memory, filesystem, network and time restrictions.
+
+
+========================================================
+34. OPTIONAL FUTURE EXTENSIONS
+========================================================
+
+After the core system is stable, optional modules can be added.
+
+Coding capability:
+Main Agent
+  |
+  v
+Coding tool/service
+  |
+  v
+isolated sandbox/container
+  |
+  v
+execution result
+
+Image generation:
+Main Agent
+  |
+  v
+image generation tool/provider
+
+Video generation:
+Main Agent
+  |
+  v
+video generation tool/provider
+
+These are optional extensions and are NOT required for the first complete implementation.
+
+
+========================================================
+35. IMPLEMENTATION PRIORITY
+========================================================
+
+PHASE 1 - FOUNDATION
+- settings
+- PostgreSQL/Neon
+- models
+- migrations
+- authentication
+- authorization
+- session APIs
+- basic tests
+
+PHASE 2 - DOCUMENTS
+- upload API
+- file storage abstraction
+- extraction
+- chunking
+- embeddings
+- pgvector
+- keyword indexing
+- background worker
+- Redis queue
+- document status
+- tests
+
+PHASE 3 - MCP
+- MCP server
+- MCP client
+- authentication
+- permissions
+- tool schemas
+- document/RAG tools
+- memory tools
+- web search
+- tests
+
+PHASE 4 - MAIN AGENT
+- Main Agent
+- planning
+- tool selection
+- execution loop
+- limits
+- retries
+- clarification
+- nested clarification
+- verification
+- tests
+
+PHASE 5 - ADVANCED RAG
+- query understanding
+- query rewriting
+- hybrid retrieval
+- reranking
+- context compression
+- citations
+- evaluation
+- tests
+
+PHASE 6 - MEMORY
+- conversation history
+- semantic memory
+- memory retrieval
+- summarization
+- cleanup
+- safety
+- tests
+
+PHASE 7 - PRODUCTION FEATURES
+- Redis cache
+- distributed rate limiting
+- streaming
+- observability
+- cost/token tracking
+- robust error handling
+- tests
+
+PHASE 8 - EVALUATION
+- evaluation datasets
+- retrieval metrics
+- answer metrics
+- agent/tool metrics
+- judge separation
+- regression tests
+
+PHASE 9 - DEPLOYMENT
+- Docker
+- Docker Compose
+- Render configuration
+- Neon configuration
+- Redis configuration
+- object storage configuration
+- GitHub Actions
+- deployment documentation
+- production smoke tests
+
+
+========================================================
+36. DEFINITION OF DONE
+========================================================
+
+AegisAI is considered complete when this flow works reliably:
+
+1. Client creates a session.
+2. Client uploads one or more documents.
+3. Documents are processed asynchronously.
+4. Documents become searchable.
+5. Client asks a question.
+6. Main Agent understands the request.
+7. Main Agent selects MCP tools.
+8. MCP securely executes tools.
+9. RAG retrieves and reranks relevant evidence.
+10. Memory provides relevant conversation context.
+11. Web search is used when required.
+12. Main Agent evaluates all returned evidence.
+13. Main Agent asks clarification when genuinely necessary.
+14. Nested clarification can resume the task.
+15. Verification checks the candidate answer.
+16. Final answer is returned with citations/evidence where applicable.
+17. Conversation is persisted.
+18. Relevant memory is persisted.
+19. Cache is used safely.
+20. Background jobs are durable and recoverable.
+21. Streaming works incrementally.
+22. Observability captures the end-to-end trace.
+23. Evaluation can measure system quality.
+24. Pytest covers unit, API, integration and failure cases.
+25. Docker deployment works.
+26. Render + Neon deployment works with configurable external services.
+
+FINAL ARCHITECTURAL STATEMENT
+------------------------------
+
+AegisAI is a single-agent, tool-using AI platform:
+
+Client
+  -> FastAPI
+  -> Main Agent
+  -> MCP
+  -> RAG / Memory / Web
+  -> Main Agent reasoning
+  -> Clarification when needed
+  -> Verification
+  -> Final Answer
+
+Around that core:
+
+PostgreSQL + pgvector = durable application, document and vector data
+Redis = cache + rate limiting + job queue
+Worker = asynchronous ingestion
+Object storage = uploaded files
+Security = authentication, authorization, validation and prompt/tool protection
+Observability = traces, metrics, logs and cost
+Evaluation = retrieval, answer and agent quality
+Streaming = incremental chat events
+Docker + GitHub Actions + Render + Neon = deployment and CI/CD
+
+The architecture is intentionally one Main Agent rather than many agents. MCP supplies controlled capabilities, while ordinary application services handle storage, ingestion, caching, queues, security and observability.
