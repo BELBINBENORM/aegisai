@@ -1,6 +1,6 @@
 # AegisAI
 
-Production-oriented AI platform with Advanced RAG, MCP, agent memory, verification, security, evaluation, observability, and streaming.
+Production-oriented AI platform with a centralized Main Agent, Advanced RAG, MCP, agent memory, planning, verification, security, evaluation, observability, and streaming.
 
 ## Live Deployment
 
@@ -445,36 +445,3 @@ The worker connects to the same Neon and Upstash infrastructure used by the API.
 | Voroa | Background processing |
 | Storage | Uploaded document files |
 
-## Project Status
-
-AegisAI is an actively developed project.
-
-The current production architecture is centered around:
-
-```text
-Main Agent
-    +
-Advanced RAG
-    +
-MCP
-    +
-Memory
-    +
-Clarification
-    +
-Verification
-    +
-Security
-    +
-Observability
-    +
-Async Jobs
-    +
-Neon
-    +
-Upstash
-    +
-Render
-    +
-Voroa
-```
