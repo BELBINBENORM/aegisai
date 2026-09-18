@@ -37,6 +37,14 @@ jobs:
 
       - run: python -m compileall app worker evaluation
 
+      - name: Enable pgvector
+        run: |
+          PGPASSWORD=postgres psql \
+            -h localhost \
+            -U postgres \
+            -d aegisai \
+            -c "CREATE EXTENSION IF NOT EXISTS vector"
+
       - name: Run database migrations
         run: alembic upgrade head
         env:
